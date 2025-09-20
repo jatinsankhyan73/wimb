@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HRTC Live Tracking</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet.js for maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Phosphor Icons for a clean look -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Custom styles to complement Tailwind */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #map {
+            height: 100vh;
+            width: 100%;
+            z-index: 0;
+        }
+        /* Custom animation for the info panel */
+        .slide-up-panel {
+            transition: transform 0.3s ease-in-out;
+        }
+        /* Custom icon styling for Leaflet */
+        .bus-icon {
+            background-color: #fff;
+            border: 2px solid #D9463F; /* HRTC Red */
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 32px !important;
+            height: 32px !important;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .bus-icon i {
+            font-size: 18px;
+            color: #D9463F;
+        }
+        .user-icon {
+            background-color: #3B82F6; /* Blue */
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 0 2px #3B82F6;
+        }
+        .map-control-button-active {
+            background-color: #3B82F6 !important;
+            color: white !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 overflow-hidden">
+    
+
+    <!-- Main Application Wrapper -->
+    <div id="app-container" class="relative h-screen w-screen">
+
+        <!-- Map Container -->
+        <div id="map"></div>
+
+        <!-- Header -->
+        <header class="absolute top-0 left-0 right-0 z-10 p-4 flex justify-between items-center bg-white/80 backdrop-blur-sm shadow-md">
+            <div class="flex items-center gap-2">
+                <img src="https://akm-img-a-in.tosshub.com/indiatoday/images/story/202501/the-ultra-is-an-indigenously-built--zero-emission--electric-bus-of-tata-motors-representative-imag-301014326-16x9.jpg?VersionId=Vo4gGPSDuSYOjotI6KZaDfRbeYr8sbda&size=690:388" alt="Bus Logo" class="w-10 h-10 rounded-full object-cover">
+                <h1 class="text-xl font-bold text-gray-800">HRTC Live</h1>
+            </div>
+        </header>
+
+        <!-- PASSENGER VIEW UI -->
+        <div id="passenger-view" class="absolute top-20 left-0 right-0 z-10 p-4">
+             <!-- Search & Trip Planner -->
+            <div class="bg-white rounded-xl shadow-lg p-4 max-w-lg mx-auto">
+                <h2 class="font-bold text-lg mb-3 text-gray-800">Find Your Bus</h2>
+                <div class="space-y-3">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input type="text" placeholder="From: e.g., Shimla" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500">
+                        <input type="text" placeholder="To: e.g., Manali" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500">
+                    </div>
+                    <div class="relative flex items-center">
+                        <div class="flex-grow border-t border-gray-300"></div>
+                        <span class="flex-shrink mx-4 text-gray-400 text-sm">OR</span>
+                        <div class="flex-grow border-t border-gray-300"></div>
+                    </div>
+                    <input type="text" placeholder="By Bus No: e.g., HP-63-1234" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500">
+                </div>
+                <button class="mt-4 w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2">
+                    <i class="ph ph-magnifying-glass"></i>
+                    Search Bus
+                </button>
+            </div>
+        </div>
+
+        <!-- Map Controls -->
+        <div id="map-controls" class="absolute bottom-4 right-4 z-10 flex flex-col gap-2">
+            <button id="street-map-btn" onclick="changeMapLayer('street')" class="bg-white p-3 rounded-lg shadow-md hover:bg-gray-100 transition-colors map-control-button-active">
+                <i class="ph ph-map-trifold text-xl text-gray-700"></i>
+            </button>
+            <button id="satellite-map-btn" onclick="changeMapLayer('satellite')" class="bg-white p-3 rounded-lg shadow-md hover:bg-gray-100 transition-colors">
+                <i class="ph ph-globe-hemisphere-west text-xl text-gray-700"></i>
+            </button>
+        </div>
+
+        <!-- Bus Details Panel (Initially Hidden) -->
+        <div id="info-panel" class="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl p-4 transform translate-y-full slide-up-panel z-10">
+            <!-- Panel Content will be injected by JS -->
+        </div>
+        
+    </div>
+
+
+<script>
+    // --- MAP INITIALIZATION ---
+    let map;
+    let userMarker;
+    let currentMapLayer;
+    const tileLayers = {};
+    const busMarkers = {};
+    const busRoutes = {};
+    // Centered on Shimla, Himachal Pradesh
+    const mapCenter = [31.1048, 77.1734];
+
+    function initMap() {
+        map = L.map('map').setView(mapCenter, 10);
+        
+        tileLayers.street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        });
+
+        tileLayers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        });
+        
+        currentMapLayer = tileLayers.street;
+        currentMapLayer.addTo(map);
+    }
+
+    // --- MOCK DATA ---
+    const mockBuses = [
+        {
+            id: 'HP63-5678',
+            name: 'Shimla - Manali Express',
+            currentLat: 31.1048,
+            currentLon: 77.1734,
+            status: 'On Time',
+            accessibility: ['AC', 'Low Floor'],
+            route: [
+                { stop: 'ISBT Shimla', time: '08:00 AM' },
+                { stop: 'Bilaspur', time: '11:30 AM' },
+                { stop: 'Mandi', time: '02:00 PM' },
+                { stop: 'Kullu', time: '04:30 PM' },
+                { stop: 'Manali', time: '06:00 PM' }
+            ]
+        },
+        {
+            id: 'HP34-9012',
+            name: 'Dharamshala - Chandigarh',
+            currentLat: 31.3,
+            currentLon: 77.0,
+            status: 'Slight Delay (15m)',
+            accessibility: ['AC'],
+            route: [
+                { stop: 'ISBT Dharamshala', time: '09:00 AM' },
+                { stop: 'Kangra', time: '09:45 AM' },
+                { stop: 'Una', time: '12:30 PM' },
+                { stop: 'Chandigarh Sec 43', time: '03:30 PM' }
+            ]
+        },
+        {
+            id: 'HP72-3456',
+            name: 'Reckong Peo - Shimla',
+            currentLat: 31.5,
+            currentLon: 77.5,
+            status: 'On Time',
+            accessibility: [],
+            route: [
+                { stop: 'Reckong Peo', time: '07:00 AM' },
+                { stop: 'Rampur', time: '12:00 PM' },
+                { stop: 'Narkanda', time: '03:00 PM' },
+                { stop: 'ISBT Shimla', time: '05:00 PM' }
+            ]
+        }
+    ];
+
+    // --- CORE LOGIC ---
+    document.addEventListener('DOMContentLoaded', () => {
+        initMap();
+        getUserLocation();
+        renderBuses();
+        // Start the bus movement simulation
+        setInterval(simulateBusMovement, 5000); // Update every 5 seconds
+    });
+
+    function getUserLocation() {
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(position => {
+                const { latitude, longitude } = position.coords;
+                if(userMarker) map.removeLayer(userMarker);
+                userMarker = L.marker([latitude, longitude], {
+                    icon: L.divIcon({
+                        className: 'user-icon',
+                        html: '',
+                        iconSize: [16, 16]
+                    })
+                }).addTo(map)
+                .bindPopup('You are here.')
+                .openPopup();
+                map.setView([latitude, longitude], 13);
+            });
+        }
+    }
+    
+    function renderBuses() {
+        mockBuses.forEach(bus => {
+            const busIcon = L.divIcon({
+                className: 'bus-icon',
+                html: `<i class="ph-fill ph-bus"></i>`,
+                iconSize: [32, 32]
+            });
+            
+            if (busMarkers[bus.id]) {
+                busMarkers[bus.id].setLatLng([bus.currentLat, bus.currentLon]);
+            } else {
+                busMarkers[bus.id] = L.marker([bus.currentLat, bus.currentLon], { icon: busIcon })
+                    .addTo(map)
+                    .on('click', () => showBusDetails(bus.id));
+            }
+            
+            busMarkers[bus.id].bindTooltip(`${bus.name}<br>Status: ${bus.status}`, { permanent: false, direction: 'top' });
+        });
+    }
+
+    function simulateBusMovement() {
+        mockBuses.forEach(bus => {
+            // Simple simulation: move buses slightly northwest
+            bus.currentLat += 0.005;
+            bus.currentLon -= 0.005;
+        });
+        renderBuses(); // Re-render with new positions
+    }
+
+    // --- UI INTERACTIONS ---
+    
+    function showBusDetails(busId) {
+        const bus = mockBuses.find(b => b.id === busId);
+        if (!bus) return;
+
+        // Clear previous route line
+        if (busRoutes[busId]) {
+            map.removeLayer(busRoutes[busId]);
+        }
+        
+        const infoPanel = document.getElementById('info-panel');
+        let routeHtml = bus.route.map(stop => `
+            <li class="flex items-center gap-4">
+                <div class="h-full w-4 flex flex-col items-center">
+                    <div class="w-1 h-full bg-gray-300"></div>
+                    <div class="w-3 h-3 rounded-full bg-red-500 z-10"></div>
+                    <div class="w-1 h-full bg-gray-300"></div>
+                </div>
+                <div>
+                    <p class="font-semibold text-gray-800">${stop.stop}</p>
+                    <p class="text-sm text-gray-500">Scheduled: ${stop.time}</p>
+                </div>
+            </li>
+        `).join('');
+
+        let accessibilityHtml = bus.accessibility.length > 0 
+            ? bus.accessibility.map(a => `<span class="bg-green-100 text-green-800 text-xs font-medium mr-2 px-2.5 py-0.5 rounded-full">${a}</span>`).join('')
+            : '<span class="text-gray-500 text-sm">No special features</span>';
+
+        infoPanel.innerHTML = `
+            <div class="flex justify-between items-start">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900">${bus.name}</h2>
+                    <p class="font-semibold text-gray-700">${bus.id}</p>
+                    <p class="text-sm text-yellow-600 font-semibold mt-1">${bus.status}</p>
+                </div>
+                <button onclick="hideInfoPanel()" class="text-gray-500 hover:text-gray-800"><i class="ph ph-x text-2xl"></i></button>
+            </div>
+            <div class="my-4">
+                <p class="font-semibold mb-2">Features:</p>
+                ${accessibilityHtml}
+            </div>
+            <div class="h-48 overflow-y-auto">
+                <h3 class="font-bold text-lg mb-2">Route Stops</h3>
+                <ul class="relative">${routeHtml.replace(/<div class="w-1 h-full bg-gray-300"><\/div>/, '<div class="w-1 h-4 bg-transparent"></div>').replace(/<div class="w-1 h-full bg-gray-300"><\/div>(?![\s\S]*<div class="w-1 h-full bg-gray-300"><\/div>)/, '<div class="w-1 h-4 bg-transparent"></div>')}</ul>
+            </div>
+            <div class="mt-4 grid grid-cols-2 gap-3">
+                <button class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+                    <i class="ph ph-share-network"></i> Share Ride
+                </button>
+                 <button class="w-full bg-gray-200 text-gray-800 font-bold py-3 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center gap-2">
+                    <i class="ph ph-bell"></i> Notify Me
+                </button>
+            </div>
+        `;
+
+        infoPanel.classList.remove('translate-y-full');
+        map.flyTo([bus.currentLat, bus.currentLon], 13);
+    }
+    
+    function hideInfoPanel() {
+        document.getElementById('info-panel').classList.add('translate-y-full');
+    }
+    
+    function changeMapLayer(layerName) {
+        if (!tileLayers[layerName]) return;
+
+        map.removeLayer(currentMapLayer);
+        currentMapLayer = tileLayers[layerName];
+        map.addLayer(currentMapLayer);
+
+        // Update button styles
+        const streetBtn = document.getElementById('street-map-btn');
+        const satelliteBtn = document.getElementById('satellite-map-btn');
+        
+        if (layerName === 'street') {
+            streetBtn.classList.add('map-control-button-active');
+            satelliteBtn.classList.remove('map-control-button-active');
+        } else {
+            satelliteBtn.classList.add('map-control-button-active');
+            streetBtn.classList.remove('map-control-button-active');
+        }
+    }
+
+</script>
+</body>
+</html>
+
+
